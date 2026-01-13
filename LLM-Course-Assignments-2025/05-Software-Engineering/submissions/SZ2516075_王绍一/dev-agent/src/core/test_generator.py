@@ -1,75 +1,57 @@
-class TestGenerator:
-    def __init__(self, code_generator):
-        self.code_generator = code_generator
+# src/core/test_generator.py
+import ast
+
+class SmartTestGenerator:
+    """智能测试生成器"""
     
-    def generate_test_cases(self, code, function_name=None):
-        """
-        为生成的代码生成测试用例
+    def __init__(self, model):
+        self.model = model
+    
+    def generate(self, code: str, function_name: str = None) -> str:
+        """为代码生成测试"""
         
-        简单实现：分析代码结构，生成基础测试
-        后续可以增强：使用模型生成更智能的测试
-        """
-        # 尝试提取函数名
         if not function_name:
             function_name = self._extract_function_name(code)
         
-        # 生成基础测试模板
-        test_code = f"""import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        # 分析代码结构
+        code_analysis = self._analyze_code(code)
+        
+        prompt = f"""请为以下Python函数生成完整的单元测试：
 
-# 导入要测试的代码
-try:
-    from generated_code import {function_name}
-except ImportError:
-    # 内联代码测试
-    {code}
-    {function_name} = locals().get('{function_name}')
-
-def test_{function_name}():
-    # 基本功能测试
-    print("测试 {function_name}...")
-    
-    # TODO: 根据实际代码生成具体的测试用例
-    # 这里生成一些通用测试
-    try:
-        # 测试1: 基本调用
-        result = {function_name}()
-        print(f"✓ 基本调用成功: {{result}}")
-    except Exception as e:
-        print(f"✗ 基本调用失败: {{e}}")
-    
-    print("测试完成！")
-
-if __name__ == "__main__":
-    test_{function_name}()
-"""
-        return test_code
-    
-    def _extract_function_name(self, code):
-        """
-        从代码中提取函数名
-        """
-        lines = code.strip().split('\n')
-        for line in lines:
-            if line.startswith('def '):
-                return line.split('def ')[1].split('(')[0].strip()
-        return "generated_function"
-    
-    def generate_with_llm(self, code):
-        """
-        使用LLM生成更智能的测试
-        """
-        prompt = f"""请为以下Python代码生成完整的测试用例。
-要求：
-1. 包含正常情况的测试
-2. 包含边界情况的测试
-3. 包含异常处理的测试
-
-代码：
+函数代码：
 {code}
 
-请直接返回pytest格式的测试代码：
-"""
+函数分析：
+{code_analysis}
+
+请生成pytest格式的测试代码，包含：
+1. 正常情况测试
+2. 边界条件测试
+3. 异常情况测试
+4. 性能测试（如果需要）
+
+只返回测试代码："""
         
-        return self.code_generator.generate_code(prompt)
+        test_code = self.model.generate(prompt)
+        
+        # 验证测试代码语法
+        if self._validate_python_syntax(test_code):
+            return test_code
+        else:
+            return self._generate_basic_test(code, function_name)
+    
+    def _analyze_code(self, code: str) -> str:
+        """分析代码结构"""
+        try:
+            tree = ast.parse(code)
+            analysis = []
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    analysis.append(f"函数: {node.name}")
+                    analysis.append(f"参数: {[arg.arg for arg in node.args.args]}")
+                    analysis.append(f"返回值类型: {self._infer_return_type(node)}")
+            
+            return '\n'.join(analysis)
+        except:
+            return "无法解析代码结构"
